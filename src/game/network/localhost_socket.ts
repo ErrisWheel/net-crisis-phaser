@@ -63,8 +63,8 @@ export function connectToSocket(
         reject(new Error("Connection timeout"));
       }, timeoutMs);
 
-      socket.addEventListener(SFS2X.SFSEvent.CONNECTION, onConnection, this);
-      socket.addEventListener(SFS2X.SFSEvent.CONNECTION_LOST, onConnectionLost, this);
+      socket.addEventListener(SFS2X.SFSEvent.CONNECTION, onConnection);
+      socket.addEventListener(SFS2X.SFSEvent.CONNECTION_LOST, onConnectionLost);
 
       socket.connect(host, port, useSSL);
     } catch (err) {
@@ -75,4 +75,13 @@ export function connectToSocket(
 
 export function connectionInfo(): { host: string; port: number; useSSL: boolean } {
   return { host: envHost, port: envPort, useSSL: envUseSSL };
+}
+
+export function getRoomVariable(room: SFS2X.Room, varName: string): any {
+  try {
+    const rv = (room as any).getVariable ? (room as any).getVariable(varName) : null;
+    return rv ? rv.value ?? rv : undefined;
+  } catch {
+    return undefined;
+  }
 }
