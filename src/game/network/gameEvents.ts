@@ -11,24 +11,32 @@ import { GameOverDialog } from "../containers/gameoverModal";
 
 export class GameEvents {
   maxPlayerAction = 2;
+  actionTurnSeconds = 20;
+
+  private roomVarsUpdateHandler: (event: ON_ROOM_VARIABLES_UPDATE_EVENT_RESPONSE) => void;
+  private extensionResponseHandler: (event: ON_EXTENSION_RESPONSE_EVENT_RESPONSE) => void;
+  private userVarsUpdateHandler: (event: ON_USER_VARIABLES_UPDATE_EVENT_RESPONSE) => void;
 
   constructor(private scene: Game) {
+    // Create bound callback functions
+    this.roomVarsUpdateHandler = (event: ON_ROOM_VARIABLES_UPDATE_EVENT_RESPONSE) => this.onRoomVariablesUpdate(event);
+    this.extensionResponseHandler = (event: ON_EXTENSION_RESPONSE_EVENT_RESPONSE) => this.onExtensionResponse(event);
+    this.userVarsUpdateHandler = (event: ON_USER_VARIABLES_UPDATE_EVENT_RESPONSE) => this.onUserVariablesUpdate(event);
+
+    // Register listeners
     socket.addEventListener(
       SFS2X.SFSEvent.ROOM_VARIABLES_UPDATE,
-      this.onRoomVariablesUpdate,
-      this
+      this.roomVarsUpdateHandler
     );
 
     socket.addEventListener(
       SFS2X.SFSEvent.EXTENSION_RESPONSE,
-      this.onExtensionResponse,
-      this
+      this.extensionResponseHandler
     );
 
     socket.addEventListener(
       SFS2X.SFSEvent.USER_VARIABLES_UPDATE,
-      this.onUserVariablesUpdate,
-      this
+      this.userVarsUpdateHandler
     );
   }
 
@@ -48,12 +56,14 @@ export class GameEvents {
   }
 
   onRoomVariablesUpdate(event: ON_ROOM_VARIABLES_UPDATE_EVENT_RESPONSE) {
-    console.log("onRoomVariablesUpdate:", event);
+    console.log("🔵 ROOM VARIABLES UPDATE:", event.changedVars, event);
     const room = event.room;
     const changedVars = event.changedVars;
 
     if (changedVars.indexOf("phase") >= 0) {
       const phase = room.getVariable("phase").value as string;
+      console.log("📋 Phase changed to:", phase);
+      this.scene.hud.addLog(`Phase changed to ${phase}`);
       switch (phase) {
         case "action":
           this.scene.hud.setPhaseMessage(`${phase.toUpperCase()} phase`);
@@ -68,6 +78,7 @@ export class GameEvents {
 
     if (changedVars.indexOf("round") >= 0) {
       const round = room.getVariable("round").value as number;
+      console.log("🔄 Round changed to:", round);
       this.scene.hud.setPhaseMessage(`Round ${round}`);
       this.scene.hud.setRoundText(round);
     }
@@ -77,13 +88,14 @@ export class GameEvents {
       const newResearchNodeId = room.getVariable("researchNodeId")
         .value as number;
 
+      console.log("🔬 Research node changed to:", newResearchNodeId);
       this.scene.board.nodeMap.get(currentResearchNodeId)?.updateImage("node");
       this.scene.board.nodeMap.get(newResearchNodeId)?.updateImage("flask");
       this.scene.board.researchNodeId = newResearchNodeId;
     }
 
     if (changedVars.indexOf("researchCount") >= 0) {
-      console.log("resolving research action");
+      console.log("📊 Research count changed");
       const researchCount = room.getVariable("researchCount").value as number;
       this.scene.hud.resolveResearchAction(researchCount);
       this.doActionPhase();
@@ -91,34 +103,44 @@ export class GameEvents {
   }
 
   onExtensionResponse(event: ON_EXTENSION_RESPONSE_EVENT_RESPONSE) {
-    console.log("game: extension response", event);
+    console.log("🔵 EXTENSION RESPONSE RECEIVED:", event.cmd, event);
     const { cmd, params, room } = event;
 
     switch (cmd) {
       case "countdownTick":
+        console.log("⏱️ Countdown tick:", params.getInt("remaining"), "phase:", params.getUtfString("phase"));
         this.doCountdownTick(params, room);
         break;
       case "treatResolve":
+        console.log("✅ Treat resolved");
         this.doTreatResolve(params, room);
         break;
       case "cleanseResolve":
+        console.log("✅ Cleanse resolved");
         this.doTreatResolve(params, room, "cleanse");
         break;
       case "bulldozeResolve":
+        console.log("✅ Bulldoze resolved");
         this.doTreatResolve(params, room, "bulldoze");
         break;
       case "infect":
+        console.log("🦠 Infect");
         this.doInfect(params, room);
         break;
       case "outbreak":
+        console.log("💥 Outbreak");
         this.doOutbreak(params, room);
         break;
       case "gameLost":
+        console.log("💀 Game lost");
         this.doGameLost();
         break;
       case "gameWon":
+        console.log("🏆 Game won");
         this.doGameWon();
         break;
+      default:
+        console.log("❓ Unknown extension response:", cmd);
     }
   }
 
@@ -131,7 +153,7 @@ export class GameEvents {
     ) {
       const previousNodePid = user.getVariable("previousNodePid").value;
       const newNodePid = user.getVariable("nodePid").value;
-      // move player
+      this.scene.hud.addLog(`${user.name} moved to ${newNodePid}`);
       this.scene.resolveMoveAction(user.name, previousNodePid, newNodePid);
       this.doActionPhase();
     }
@@ -140,11 +162,37 @@ export class GameEvents {
       const myName = socket.mySelf.name;
       const userName = user.name;
 
+      const mana = user.getVariable("mana").value as number;
+
       if (myName === userName) {
-        this.scene.hud.updateMana(user.getVariable("mana").value as number);
+        this.scene.hud.updateMana(mana);
+        this.scene.hud.addLog(`Mana is now ${mana}`);
       }
 
-      this.doActionPhase();
+      if (myName === userName) {
+        this.doActionPhase();
+      }
+    }
+
+    if (changedVars.indexOf("actionCount") >= 0) {
+      const mySelf = socket.mySelf;
+      if (mySelf && user.name === mySelf.name) {
+        const actionCount = user.getVariable("actionCount").value as number;
+        this.scene.hud.updateActionCount(actionCount);
+        this.scene.hud.addLog(`Actions remaining: ${2 - actionCount}/2`);
+
+        const room = socket.lastJoinedRoom;
+        if (room) {
+          const phaseVar = room.getVariable("phase");
+          const phase = phaseVar ? (phaseVar.value as string) : "action";
+
+          if (phase === "action") {
+            this.doActionPhase();
+          } else if (phase === "infection") {
+            this.scene.hud.disableAllButtons();
+          }
+        }
+      }
     }
 
     if (changedVars.indexOf("promoteCount") >= 0) {
@@ -165,11 +213,38 @@ export class GameEvents {
   doActionPhase() {
     this.scene.sound.play("new_phase");
     const mySelf = socket.mySelf;
-    const actionCount = mySelf.getVariable("actionCount").value as number;
+    if (!mySelf) {
+      return;
+    }
+
+    const room = socket.lastJoinedRoom;
+    if (!room) {
+      return;
+    }
+
+    // Only update buttons if we're actually in the action phase
+    const phaseVar = room.getVariable("phase");
+    const phase = phaseVar ? (phaseVar.value as string) : undefined;
+    if (phase !== "action") {
+      return;
+    }
+
+    if (!this.scene.hud.countdownEvent) {
+      this.scene.hud.updateTimer(this.actionTurnSeconds, "action");
+    }
+
+    const actionCountVar = mySelf.getVariable("actionCount");
+    const nodePidVar = mySelf.getVariable("nodePid");
+    const manaVar = mySelf.getVariable("mana");
+    const actionCount = actionCountVar ? (actionCountVar.value as number) : 0;
+    const mana = manaVar ? (manaVar.value as number) : 0;
+
+    // Keep HUD in sync even if a specific variable update event was missed.
+    this.scene.hud.updateActionCount(actionCount);
+    this.scene.hud.updateMana(mana);
 
     if (actionCount < this.maxPlayerAction) {
-      console.log("yyyyy");
-      const myNodePid = mySelf.getVariable("nodePid").value as number;
+      const myNodePid = nodePidVar ? (nodePidVar.value as number) : 1;
       const myNode = this.scene.board.nodeMap.get(myNodePid);
 
       this.scene.hud.updateActionButtons({
@@ -188,7 +263,15 @@ export class GameEvents {
 
   doCountdownTick(params: SFS2X.SFSObject, room: SFS2X.SFSRoom) {
     const timeRemaining = params.getInt("remaining");
-    const phase = room.getVariable("phase").value;
+    let phase = room.getVariable("phase").value as string;
+
+    try {
+      phase = params.getUtfString("phase");
+    } catch {
+      // Fall back to room variable when older server payloads do not include phase.
+    }
+
+    this.scene.hud.addLog(`${phase} timer: ${timeRemaining}`);
     this.scene.hud.updateTimer(timeRemaining, phase);
   }
 
@@ -280,15 +363,15 @@ export class GameEvents {
   reset() {
     socket.removeEventListener(
       SFS2X.SFSEvent.ROOM_VARIABLES_UPDATE,
-      this.onRoomVariablesUpdate
+      this.roomVarsUpdateHandler
     );
     socket.removeEventListener(
       SFS2X.SFSEvent.EXTENSION_RESPONSE,
-      this.onExtensionResponse
+      this.extensionResponseHandler
     );
     socket.removeEventListener(
       SFS2X.SFSEvent.USER_VARIABLES_UPDATE,
-      this.onUserVariablesUpdate
+      this.userVarsUpdateHandler
     );
   }
 }

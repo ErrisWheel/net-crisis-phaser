@@ -30,10 +30,19 @@ export class Game extends BaseScene {
       nodeConfig: NodeConfig,
       edgeConfig: EdgeConfig,
     });
+    this.hud = new Hud(this, 0, 0);
+
     this.gameEvents = new GameEvents(this);
     this.gameEvents.setPlayerInitialState();
 
-    this.hud = new Hud(this, 0, 0);
+    this.time.delayedCall(200, () => {
+      const phase = getRoomVariable("phase")?.value as string | undefined;
+      if (phase !== "infection") {
+        this.gameEvents.doActionPhase();
+        // Ensure timer is visible on first round even if initial extension tick arrived early.
+        this.hud.updateTimer(20, "action");
+      }
+    });
 
     this.handleActionSelection();
   }

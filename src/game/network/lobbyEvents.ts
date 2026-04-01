@@ -40,6 +40,16 @@ export class LobbyEvents {
     // Update the player list in the lobby scene
     this.scene.players = socket.lastJoinedRoom.getPlayerList();
     this.scene.updatePlayerList();
+
+    const players = this.scene.players;
+    const allReady =
+      players.length > 0 &&
+      players.every((player) => player.getVariable("isReady")?.value === true);
+
+    if (allReady) {
+      console.log("🚀 Lobby: All players ready, starting local countdown");
+      this.scene.startCountdown();
+    }
   }
 
   onUserEntered(event: ON_USER_ENTER_ROOM_EVENT_RESPONSE) {

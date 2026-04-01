@@ -24,6 +24,7 @@ export class LobbyScene extends BaseScene {
 
   countdownMax = 3;
   private countdownText!: Phaser.GameObjects.Text;
+  private countdownStarted = false;
   private selectedCharacter: string = "";
   private characterIcons: { [key: string]: Phaser.GameObjects.Image } = {};
 
@@ -217,6 +218,12 @@ export class LobbyScene extends BaseScene {
   }
 
   startCountdown() {
+    if (this.countdownStarted) {
+      return;
+    }
+
+    this.countdownStarted = true;
+
     const seconds = this.countdownMax;
     let timeLeft = seconds;
 

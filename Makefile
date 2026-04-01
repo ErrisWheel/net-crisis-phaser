@@ -3,6 +3,7 @@ include .env
 export $(shell sed 's/=.*//' .env)
 
 REMOTE=root@$$(cat droplet_ip.txt)
+LOCAL_EXTENSION_PATH ?= server/extensions
 
 create-droplet:
 	@echo "🚀 Creating droplet $(DROPLET_NAME)..."
@@ -70,7 +71,7 @@ deploy-backend:
 
 deploy-extension:
 	@echo "📦 Deploying SmartFoxServer 2X extension..."
-	rsync -avz --delete $(LOCAL_SFS)/extensions/NetCrisisExtension/ $(REMOTE):/root/SmartFoxServer_2X/SFS2X/extensions/NetCrisisExtension
+	rsync -avz --delete $(LOCAL_EXTENSION_PATH)/ $(REMOTE):/root/SmartFoxServer_2X/SFS2X/extensions/NetCrisisExtension
 	@echo "✅ SmartFoxServer deployed successfully!"
 
 restart-backend:

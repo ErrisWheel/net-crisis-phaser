@@ -7,6 +7,7 @@ export class Hud extends Phaser.GameObjects.Container {
   roundText: Phaser.GameObjects.Text;
   timerText: Phaser.GameObjects.Text;
   phaseText: Phaser.GameObjects.Text;
+  countdownEvent?: Phaser.Time.TimerEvent;
 
   // log box
   logBox: any;
@@ -22,17 +23,19 @@ export class Hud extends Phaser.GameObjects.Container {
   // config
   maxResearch: number = 10;
   maxOutbreak: number = 5;
-  travelCost: number = 5;
-  cleanseCost: number = 3;
-  bulldozeCost: number = 3;
+  travelCost: number = 3;
+  cleanseCost: number = 5;
+  bulldozeCost: number = 5;
   evolveCost: number = 5;
 
   researchCounter: number = 0;
   outbreakCounter: number = 0;
   manaCounter: number = 0;
+  actionCounter: number = 0;
+  maxPlayerAction: number = 2;
 
   playerCount: number;
-  lastCountdown: number;
+  lastCountdown: number = -1;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y);
@@ -360,9 +363,10 @@ export class Hud extends Phaser.GameObjects.Container {
   updateActionButtons(options: { hasVirus: boolean; isResearchNode: boolean }) {
     this.actionButtons.forEach((btn) => {
       const label = btn.text;
+      const hasActionsRemaining = this.actionCounter < this.maxPlayerAction;
 
       if (label === "Charge") {
-        if (this.manaCounter < 5) {
+        if (this.manaCounter < 5 && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -370,10 +374,15 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.setAlpha(0.5);
         }
       } else if (label === "Move") {
-        btn.setInteractive({ useHandCursor: true });
-        btn.setAlpha(1);
+        if (hasActionsRemaining) {
+          btn.setInteractive({ useHandCursor: true });
+          btn.setAlpha(1);
+        } else {
+          btn.disableInteractive();
+          btn.setAlpha(0.5);
+        }
       } else if (label === "Treat") {
-        if (options.hasVirus) {
+        if (options.hasVirus && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -381,7 +390,7 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.setAlpha(0.5);
         }
       } else if (label === "Research") {
-        if (options.isResearchNode) {
+        if (options.isResearchNode && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -390,7 +399,7 @@ export class Hud extends Phaser.GameObjects.Container {
         }
         return;
       } else if (label.indexOf("Travel") >= 0) {
-        if (this.manaCounter >= this.travelCost) {
+        if (this.manaCounter >= this.travelCost && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -398,7 +407,7 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.setAlpha(0.5);
         }
       } else if (label.indexOf("Cleanse") >= 0) {
-        if (this.manaCounter >= this.cleanseCost) {
+        if (this.manaCounter >= this.cleanseCost && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -406,7 +415,7 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.setAlpha(0.5);
         }
       } else if (label.indexOf("Bulldoze") >= 0) {
-        if (this.manaCounter >= this.bulldozeCost) {
+        if (this.manaCounter >= this.bulldozeCost && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -414,7 +423,7 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.setAlpha(0.5);
         }
       } else if (label.indexOf("Evolve") >= 0) {
-        if (this.manaCounter >= this.evolveCost) {
+        if (this.manaCounter >= this.evolveCost && hasActionsRemaining) {
           btn.setInteractive({ useHandCursor: true });
           btn.setAlpha(1);
         } else {
@@ -426,8 +435,41 @@ export class Hud extends Phaser.GameObjects.Container {
   }
 
   updateTimer(timeRemaining: number, phase: string) {
+    this.countdownEvent?.remove(false);
+    this.countdownEvent = undefined;
+
     if (phase === "action") {
       this.timerText.setText(`⏱ ${timeRemaining}`);
+      this.lastCountdown = -1;
+
+      if (timeRemaining > 0) {
+        let remaining = timeRemaining;
+        this.countdownEvent = this.scene.time.addEvent({
+          delay: 1000,
+          loop: true,
+          callback: () => {
+            remaining -= 1;
+            this.timerText.setText(`⏱ ${Math.max(remaining, 0)}`);
+
+            if (remaining <= 3 && remaining >= 0 && remaining !== this.lastCountdown) {
+              this.lastCountdown = remaining;
+              this.phaseText.setText(`${remaining}`).setAlpha(0);
+              this.scene.sound.play("countdown");
+              this.scene.tweens.add({
+                targets: this.phaseText,
+                alpha: { from: 0, to: 1 },
+                duration: 500,
+                yoyo: true,
+              });
+            }
+
+            if (remaining <= 0) {
+              this.countdownEvent?.remove(false);
+              this.countdownEvent = undefined;
+            }
+          },
+        });
+      }
 
       if (timeRemaining <= 3 && timeRemaining !== this.lastCountdown) {
         this.lastCountdown = timeRemaining;
@@ -443,6 +485,10 @@ export class Hud extends Phaser.GameObjects.Container {
     } else {
       this.timerText.setText(`⏱`);
     }
+  }
+
+  updateActionCount(count: number) {
+    this.actionCounter = count;
   }
 
   updateMana(count: number) {
