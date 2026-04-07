@@ -82,6 +82,7 @@ export class CreateGameEvents {
     this.scene.gotoScene("LobbyScene", {
       roomCode: event.room.name,
       players: event.room.getPlayerList(),
+      room: event.room,
     });
   }
 
@@ -101,7 +102,12 @@ export class CreateGameEvents {
 
   loginPlayer() {
     this.scene.setStatusMessage("Logging in...");
-    socket.send(new SFS2X.LoginRequest(this.scene.playerName));
+    if (socket.mySelf) {
+      // Already authenticated — skip login and proceed directly to room creation
+      this.onLogin({ user: socket.mySelf } as ON_LOGIN_EVENT_RESPONSE);
+    } else {
+      socket.send(new SFS2X.LoginRequest(this.scene.playerName));
+    }
   }
 
   reset() {

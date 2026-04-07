@@ -69,6 +69,7 @@ export class JoinGameEvents {
     this.scene.gotoScene("LobbyScene", {
       roomCode: event.room.name,
       players: event.room.getPlayerList(),
+      room: event.room,
     });
   }
 
@@ -94,10 +95,19 @@ export class JoinGameEvents {
       return;
     }
     console.log("logging in user:", playerName);
-    try {
-      socket.send(new LoginRequest(playerName));
-    } catch (error) {
-      console.error("❌ Join Game: Error logging in", error);
+    if (socket.mySelf) {
+      // Already authenticated — skip login and proceed directly to room join
+      const roomCode = this.scene.roomInput?.value.trim();
+      console.log("Joining room with code:", roomCode);
+      if (roomCode) {
+        socket.send(new JoinRoomRequest(roomCode));
+      }
+    } else {
+      try {
+        socket.send(new LoginRequest(playerName));
+      } catch (error) {
+        console.error("❌ Join Game: Error logging in", error);
+      }
     }
   }
 }

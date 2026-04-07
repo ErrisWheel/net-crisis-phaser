@@ -15,7 +15,7 @@ export class GameOverDialog extends Phaser.GameObjects.Container {
     const sound = isWin ? "victory" : "outbreak";
 
     scene.sound.play(sound);
-    // Modal background
+
     const bg = scene.add
       .rectangle(0, 0, 280, 150, bgColor, 0.95)
       .setStrokeStyle(3, borderColor)

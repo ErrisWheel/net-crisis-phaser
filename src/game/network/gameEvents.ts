@@ -26,17 +26,20 @@ export class GameEvents {
     // Register listeners
     socket.addEventListener(
       SFS2X.SFSEvent.ROOM_VARIABLES_UPDATE,
-      this.roomVarsUpdateHandler
+      this.roomVarsUpdateHandler,
+      this
     );
 
     socket.addEventListener(
       SFS2X.SFSEvent.EXTENSION_RESPONSE,
-      this.extensionResponseHandler
+      this.extensionResponseHandler,
+      this
     );
 
     socket.addEventListener(
       SFS2X.SFSEvent.USER_VARIABLES_UPDATE,
-      this.userVarsUpdateHandler
+      this.userVarsUpdateHandler,
+      this
     );
   }
 
@@ -63,7 +66,6 @@ export class GameEvents {
     if (changedVars.indexOf("phase") >= 0) {
       const phase = room.getVariable("phase").value as string;
       console.log("📋 Phase changed to:", phase);
-      this.scene.hud.addLog(`Phase changed to ${phase}`);
       switch (phase) {
         case "action":
           this.scene.hud.setPhaseMessage(`${phase.toUpperCase()} phase`);
@@ -99,6 +101,11 @@ export class GameEvents {
       const researchCount = room.getVariable("researchCount").value as number;
       this.scene.hud.resolveResearchAction(researchCount);
       this.doActionPhase();
+    }
+
+    if (changedVars.indexOf("outbreakCount") >= 0) {
+      const outbreakCount = room.getVariable("outbreakCount").value as number;
+      this.scene.hud.setOutbreakCount(outbreakCount);
     }
 
     if (changedVars.indexOf("activePlayerName") >= 0) {
@@ -162,7 +169,7 @@ export class GameEvents {
       const newNodePid = user.getVariable("nodePid").value;
       this.scene.hud.addLog(`${user.name} moved to ${newNodePid}`);
       this.scene.resolveMoveAction(user.name, previousNodePid, newNodePid);
-      this.doActionPhase();
+      this.doActionPhase(user);
     }
 
     if (changedVars.indexOf("mana") >= 0) {
@@ -177,7 +184,7 @@ export class GameEvents {
       }
 
       if (myName === userName) {
-        this.doActionPhase();
+        this.doActionPhase(user);
       }
     }
 
@@ -194,7 +201,7 @@ export class GameEvents {
           const phase = phaseVar ? (phaseVar.value as string) : "action";
 
           if (phase === "action") {
-            this.doActionPhase();
+            this.doActionPhase(user);
           } else if (phase === "infection") {
             this.scene.hud.disableAllButtons();
           }
@@ -217,8 +224,8 @@ export class GameEvents {
     }
   }
 
-  doActionPhase() {
-    const mySelf = socket.mySelf;
+  doActionPhase(currentUser?: SFS2X.SFSUser) {
+    const mySelf = currentUser ?? socket.mySelf;
     if (!mySelf) {
       return;
     }
@@ -227,7 +234,7 @@ export class GameEvents {
     if (!room) {
       return;
     }
-    
+
     const phaseVar = room.getVariable("phase");
     const phase = phaseVar ? (phaseVar.value as string) : undefined;
     if (phase !== "action") {
@@ -239,9 +246,21 @@ export class GameEvents {
       ? (activePlayerVar.value as string)
       : "";
     if (activePlayerName && activePlayerName !== mySelf.name) {
+      if (this.scene.dialog) {
+        this.scene.dialog.close();
+        this.scene.dialog = null;
+      }
+      this.scene.board.clearHighlights();
       this.scene.hud.disableAllButtons();
       return;
     }
+
+    if (this.scene.dialog) {
+      this.scene.dialog.close();
+      this.scene.dialog = null;
+    }
+
+    this.scene.board.clearHighlights();
 
     this.scene.sound.play("new_phase");
 
@@ -289,7 +308,6 @@ export class GameEvents {
       // Fall back to room variable when older server payloads do not include phase.
     }
 
-    this.scene.hud.addLog(`${phase} timer: ${timeRemaining}`);
     this.scene.hud.updateTimer(timeRemaining, phase);
   }
 
@@ -415,6 +433,10 @@ export class GameEvents {
     socket.send(
       new SFS2X.ExtensionRequest("playerAction", params, socket.lastJoinedRoom)
     );
+  }
+
+  emitEndTurn() {
+    this.emitPlayerAction("endturn");
   }
 
   reset() {

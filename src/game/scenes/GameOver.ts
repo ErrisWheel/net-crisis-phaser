@@ -139,6 +139,8 @@ export class GameOver extends Scene {
 
         btnBg.on('pointerover', () => btnBg.setFillStyle(0x444444));
         btnBg.on('pointerout',  () => btnBg.setFillStyle(0x222222));
-        btnBg.on('pointerup',   () => this.scene.start('MainMenu'));
+        btnBg.on('pointerup',   () => {
+            window.location.reload();
+        });
     }
 }

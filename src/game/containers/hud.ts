@@ -21,12 +21,11 @@ export class Hud extends Phaser.GameObjects.Container {
   rexUI: RexUIPlugin;
 
   // config
-  maxResearch: number = 10;
-  maxOutbreak: number = 5;
+  maxResearch: number = 5;
+  maxOutbreak: number = 6;
   travelCost: number = 3;
   cleanseCost: number = 5;
   bulldozeCost: number = 5;
-  evolveCost: number = 5;
 
   researchCounter: number = 0;
   outbreakCounter: number = 0;
@@ -261,6 +260,12 @@ export class Hud extends Phaser.GameObjects.Container {
     const character = socket.mySelf.getVariable("char").value as string;
 
     switch (character) {
+      case "knight": {
+        const travelIdx = actions.indexOf(`Travel (${this.travelCost}♦)`);
+        if (travelIdx >= 0) actions[travelIdx] = `Travel (2♦)`;
+        this.travelCost = 2;
+        break;
+      }
       case "bishop":
         actions.push(`Cleanse (${this.cleanseCost}♦)`);
         break;
@@ -304,33 +309,46 @@ export class Hud extends Phaser.GameObjects.Container {
   }
 
   resolveOutbreak(count: number) {
-    if (this.outbreakCounter >= this.maxOutbreak) return;
+    this.setOutbreakCount(count, true);
+  }
 
-    // TODO: outbreak sound
-    const index = count - 1;
-    this.outbreakCounter = count;
+  setOutbreakCount(count: number, animate: boolean = false) {
+    const nextCount = Phaser.Math.Clamp(count, 0, this.maxOutbreak);
+    const previousCount = this.outbreakCounter;
+    this.outbreakCounter = nextCount;
 
-    const icon = this.virusIcons[index];
-    if (!icon) return;
+    this.virusIcons.forEach((icon, index) => {
+      const active = index < nextCount;
 
-    icon.setAlpha(1).setScale(0); // start hidden & shrunk
+      if (!active) {
+        this.scene.tweens.killTweensOf(icon);
+        icon.setAlpha(0.5).setScale(0.3);
+        return;
+      }
 
-    this.scene.tweens.add({
-      targets: icon,
-      scale: { from: 0.0, to: 0.7 },
-      duration: 1500,
-      ease: "Back.Out",
-      onComplete: () => {
-        // shrink back to normal size with a little bounce
+      icon.setAlpha(1);
+      if (animate && index === nextCount - 1 && nextCount > previousCount) {
+        icon.setScale(0);
         this.scene.tweens.add({
           targets: icon,
-          scale: 0.3,
-          duration: 500,
-          ease: "Bounce.Out",
-        });
+          scale: { from: 0.0, to: 0.7 },
+          duration: 1500,
+          ease: "Back.Out",
+          onComplete: () => {
+            this.scene.tweens.add({
+              targets: icon,
+              scale: 0.3,
+              duration: 500,
+              ease: "Bounce.Out",
+            });
 
-        icon.setAlpha(1);
-      },
+            icon.setAlpha(1);
+          },
+        });
+      } else {
+        this.scene.tweens.killTweensOf(icon);
+        icon.setScale(0.3);
+      }
     });
   }
 
@@ -340,7 +358,8 @@ export class Hud extends Phaser.GameObjects.Container {
 
   // === Utility Methods ===
   addLog(message: string) {
-    const logLine = this.scene.add.text(0, 0, message, {
+    const normalized = message.charAt(0).toUpperCase() + message.slice(1);
+    const logLine = this.scene.add.text(0, 0, normalized, {
       fontSize: "14px",
       color: "#ffffff",
       wordWrap: { width: 280 },
@@ -422,14 +441,6 @@ export class Hud extends Phaser.GameObjects.Container {
           btn.disableInteractive();
           btn.setAlpha(0.5);
         }
-      } else if (label.indexOf("Evolve") >= 0) {
-        if (this.manaCounter >= this.evolveCost && hasActionsRemaining) {
-          btn.setInteractive({ useHandCursor: true });
-          btn.setAlpha(1);
-        } else {
-          btn.disableInteractive();
-          btn.setAlpha(0.5);
-        }
       }
     });
   }
@@ -464,6 +475,12 @@ export class Hud extends Phaser.GameObjects.Container {
             }
 
             if (remaining <= 0) {
+              const room = socket.lastJoinedRoom;
+              const activePlayerName = room?.getVariable("activePlayerName")
+                ?.value as string | undefined;
+              if (activePlayerName === socket.mySelf?.name) {
+                this.scene.events.emit("actionTimerExpired");
+              }
               this.countdownEvent?.remove(false);
               this.countdownEvent = undefined;
             }
@@ -525,15 +542,8 @@ export class Hud extends Phaser.GameObjects.Container {
       onComplete: () => this.phaseText.setAlpha(0),
     });
 
-    this.addLog(`${message}`);
   }
 
   setupCharacterAbilities() {
-    const mySelf = socket.mySelf;
-    const character = mySelf.getVariable("char").value as string;
-
-    if (character === "knight") {
-      this.travelCost = 3;
-    }
   }
 }

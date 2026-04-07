@@ -143,21 +143,25 @@ export class NodeContainer extends Phaser.GameObjects.Container {
     this.virusSprites.forEach((v) => v.destroy());
     this.virusSprites = [];
 
-    if (count <= 0) return;
+    if (count <= 0) {
+      return;
+    }
 
-    // Position viruses along the top half-circle
-    const radius = 35; // distance from node center
-    const startAngle = Math.PI; // 180° (left)
-    const endAngle = Phaser.Math.PI2; // 0° (right)
-    const step = (endAngle - startAngle) / (count + 1);
+    const iconsPerRow = 4;
+    const spacingX = 14;
+    const spacingY = 14;
+    const startY = -34;
 
-    for (let i = 1; i <= count; i++) {
-      const angle = startAngle + step * i;
-      const vx = Math.cos(angle) * radius;
-      const vy = Math.sin(angle) * radius;
+    for (let index = 0; index < count; index++) {
+      const row = Math.floor(index / iconsPerRow);
+      const col = index % iconsPerRow;
+      const itemsInRow = Math.min(iconsPerRow, count - row * iconsPerRow);
+      const rowWidth = (itemsInRow - 1) * spacingX;
+      const vx = col * spacingX - rowWidth / 2;
+      const vy = startY - row * spacingY;
 
       const virus = this.scene.add.image(vx, vy, "virus");
-      virus.setScale(0.25);
+      virus.setScale(0.2);
       virus.setOrigin(0.5);
       this.add(virus);
       this.virusSprites.push(virus);
@@ -166,21 +170,21 @@ export class NodeContainer extends Phaser.GameObjects.Container {
       virus.setScale(0);
       this.scene.tweens.add({
         targets: virus,
-        scale: { from: 0, to: 0.25 },
+        scale: { from: 0, to: 0.2 },
         duration: 400,
         ease: "Back.Out",
-        delay: i * 100,
+        delay: index * 50,
         onComplete: () => {
           // === Pulse AFTER grow finishes ===
           this.scene.tweens.add({
             targets: virus,
-            scale: { from: 0.25, to: 0.35 },
+            scale: { from: 0.2, to: 0.28 },
             yoyo: true,
             repeat: 0,
             duration: 200,
             ease: "Sine.easeInOut",
             onComplete: () => {
-              virus.setDisplaySize(16, 16);
+              virus.setDisplaySize(13, 13);
             },
           });
         },

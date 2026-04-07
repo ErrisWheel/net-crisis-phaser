@@ -48,6 +48,7 @@ export class Game extends BaseScene {
       }
     });
 
+    this.events.on("actionTimerExpired", this.handleActionTimerExpired, this);
     this.handleActionSelection();
   }
 
@@ -60,7 +61,7 @@ export class Game extends BaseScene {
         this.handleMoveAction();
       }
 
-      if (action === "Treat") {
+      if (action.indexOf("Treat") >= 0) {
         this.handleTreatAction();
       }
 
@@ -70,6 +71,10 @@ export class Game extends BaseScene {
 
       if (action === "Charge") {
         this.handleCharge();
+      }
+
+      if (action.indexOf("Evolve") >= 0) {
+        this.handleEvolve();
       }
 
       if (action.indexOf("Travel") >= 0) {
@@ -176,6 +181,11 @@ export class Game extends BaseScene {
   handleCharge() {
     this.sound.play("button_click");
     this.confirmCharge();
+  }
+
+  handleEvolve() {
+    this.sound.play("button_click");
+    this.confirmEvolve();
   }
 
   private confirmMove(
@@ -412,6 +422,51 @@ export class Game extends BaseScene {
     );
   }
 
+  private confirmEvolve() {
+    if (this.dialog) {
+      this.dialog.destroy();
+      this.dialog = null;
+    }
+
+    this.dialog = new ConfirmDialog(
+      this,
+      `Evolve to the next role?`,
+      () => {
+        var phase = getRoomVariable("phase").value as string;
+        if (phase !== "action") return;
+        this.hud.addLog(`Confirmed to evolve`);
+
+        this.gameEvents.emitPlayerAction("evolve");
+
+        this.board.clearHighlights();
+        this.hud.disableAllButtons();
+      },
+      () => {
+        if (this.board) {
+          this.board.clearHighlights();
+        }
+      }
+    );
+  }
+
+  private handleActionTimerExpired() {
+    const phase = getRoomVariable("phase")?.value as string | undefined;
+    if (phase !== "action") {
+      return;
+    }
+
+    const activePlayerName = getRoomVariable("activePlayerName")?.value as
+      | string
+      | undefined;
+    if (activePlayerName !== socket.mySelf.name) {
+      return;
+    }
+
+    this.hud.addLog("Turn timed out. Ending turn.");
+    this.gameEvents.emitEndTurn();
+    this.hud.disableAllButtons();
+  }
+
   resolveMoveAction(
     playerName: string,
     currentNodeId: number,
@@ -438,6 +493,7 @@ export class Game extends BaseScene {
         onComplete: () => {
           currentNode?.removePlayer(playerName);
           targetNode?.addPlayer(player);
+          this.gameEvents.doActionPhase();
         },
       });
     }
@@ -445,6 +501,7 @@ export class Game extends BaseScene {
 
   cleanup(): void {
     // Clean up resources, listeners, etc. here
+    this.events.off("actionTimerExpired", this.handleActionTimerExpired, this);
     this.gameEvents.reset();
     this.board.clearHighlights();
     this.hud.disableInteractive();

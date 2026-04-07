@@ -2,6 +2,7 @@ var MAX_ACTIONS_PER_PLAYER = 2;
 var MAX_MANA = 5;
 var ACTION_TURN_SECONDS = 20;
 var INFECTION_TURN_SECONDS = 10;
+var MAX_GROW_NODES_PER_INFECTION_PHASE = 3;
 var TRAVEL_MANA_COST = 3;
 var SPECIAL_MANA_COST = 5;
 var MAX_ROUNDS = 20;
@@ -62,7 +63,7 @@ var EDGE_MAP = {
 };
 
 var ALL_NODE_IDS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28];
-var INITIAL_VIRUS = {3:1,6:1,8:2,10:1,12:1,14:1,17:1,23:2,25:1,27:1};
+var INITIAL_VIRUS = {3:1,10:1,14:1,17:1,27:1};
 
 function init() {
     room = resolveRoom(null, null);
@@ -161,6 +162,7 @@ function beginGame() {
         return;
     }
     gameStarted = true;
+    resetAllPlayersReady();
     round = 1;
     currentPhase = "action";
     researchCount = 0;
@@ -195,6 +197,12 @@ function onPlayerAction(params, sender) {
         if (!isSenderTurn(sender)) {
             return;
         }
+
+        if (actionType === "endturn") {
+            endTurn(sender);
+            return;
+        }
+
         if (!consumeAction(sender)) {
             return;
         }
@@ -213,6 +221,8 @@ function onPlayerAction(params, sender) {
             resolveResearch(sender, targetNodeId);
         } else if (actionType === "charge") {
             resolveCharge(sender);
+        } else if (actionType === "evolve") {
+            resolveEvolve(sender);
         }
         if (getUserInt(sender, "actionCount", 0) >= MAX_ACTIONS_PER_PLAYER) {
             endTurn(sender);
@@ -235,7 +245,8 @@ function resolveMove(sender, targetNodeId, consumesMana) {
         new SFSUserVariable("nodePid", targetNodeId)
     ];
     if (consumesMana) {
-        vars.push(new SFSUserVariable("mana", Math.max(0, getUserInt(sender, "mana", 0) - TRAVEL_MANA_COST)));
+        var travelCost = getVariableValue(sender, "char", "pawn") === "knight" ? 2 : TRAVEL_MANA_COST;
+        vars.push(new SFSUserVariable("mana", Math.max(0, getUserInt(sender, "mana", 0) - travelCost)));
     }
     setUserState(sender, vars);
 }
@@ -244,23 +255,85 @@ function resolveTreat(sender, targetNodeId, cmd, manaCost, clearAll) {
     if (targetNodeId <= 0) {
         targetNodeId = getUserInt(sender, "nodePid", 1);
     }
-    var current = getNodeVirus(targetNodeId);
-    var next = clearAll ? 0 : Math.max(0, current - 1);
-    if (cmd === "cleanseResolve") {
-        next = Math.max(0, current - 2);
+    var character = getVariableValue(sender, "char", "pawn");
+    var affectedNodes = [targetNodeId];
+
+    if (cmd === "treatResolve" && character === "knight") {
+        var adjacent = EDGE_MAP[targetNodeId] || [];
+        for (var i = 0; i < adjacent.length; i++) {
+            affectedNodes.push(adjacent[i]);
+        }
     }
-    if (current > 0) {
-        awardPoints(sender, 50);
+
+    var seen = {};
+    for (var j = 0; j < affectedNodes.length; j++) {
+        var nodeId = affectedNodes[j];
+        if (seen[nodeId]) {
+            continue;
+        }
+        seen[nodeId] = true;
+
+        var current = getNodeVirus(nodeId);
+        var wasOutbreaking = current > 3;
+        var next = clearAll ? 0 : Math.max(0, current - 1);
+        if (cmd === "cleanseResolve") {
+            next = Math.max(0, current - 2);
+        }
+        var willBeOutbreaking = next > 3;
+        if (current > 0) {
+            awardPoints(sender, 50);
+        }
+
+        if (wasOutbreaking && !willBeOutbreaking) {
+            outbreakCount = Math.max(0, outbreakCount - 1);
+        }
+
+        setNodeVirus(nodeId, next);
+
+        var response = new SFSObject();
+        response.putInt("targetNodeId", nodeId);
+        response.putInt("virusCount", next);
+        sendToRoom(cmd, response);
     }
-    setNodeVirus(targetNodeId, next);
-    setRoomVars([new SFSRoomVariable("boardState", createBoardStateArray())]);
+
+    setRoomVars([
+        new SFSRoomVariable("boardState", createBoardStateArray()),
+        new SFSRoomVariable("outbreakCount", outbreakCount)
+    ]);
     if (manaCost > 0) {
         setUserState(sender, [new SFSUserVariable("mana", Math.max(0, getUserInt(sender, "mana", 0) - manaCost))]);
     }
-    var response = new SFSObject();
-    response.putInt("targetNodeId", targetNodeId);
-    response.putInt("virusCount", next);
-    sendToRoom(cmd, response);
+}
+
+function resolveEvolve(sender) {
+    var mana = getUserInt(sender, "mana", 0);
+    if (mana < SPECIAL_MANA_COST) {
+        return;
+    }
+
+    var promoteCount = getUserInt(sender, "promoteCount", 0);
+    if (promoteCount < 7) {
+        return;
+    }
+
+    var character = getVariableValue(sender, "char", "pawn");
+    var nextCharacter = character;
+
+    if (character === "pawn") {
+        nextCharacter = "knight";
+    } else if (character === "knight") {
+        nextCharacter = "bishop";
+    } else if (character === "bishop") {
+        nextCharacter = "rook";
+    } else {
+        return;
+    }
+
+    setUserState(sender, [
+        new SFSUserVariable("char", nextCharacter),
+        new SFSUserVariable("mana", Math.max(0, mana - SPECIAL_MANA_COST)),
+        new SFSUserVariable("promoteCount", 0)
+    ]);
 }
 
 function resolveResearch(sender, targetNodeId) {
@@ -279,6 +352,7 @@ function resolveResearch(sender, targetNodeId) {
     if (researchCount >= WIN_RESEARCH_TARGET) {
         sendToRoom("gameWon", createGameResultPayload());
         gameStarted = false;
+        resetAllPlayersReady();
     }
 }
 
@@ -291,11 +365,16 @@ function endTurn(sender) {
     currentPhase = "infection";
     setRoomVars([new SFSRoomVariable("phase", currentPhase)]);
     sendCountdownTick(INFECTION_TURN_SECONDS, getUsersInRoom());
-    infectSingleSourceNode();
+    runInfectionPhase();
+
+    if (!gameStarted) {
+        return;
+    }
 
     if (round >= MAX_ROUNDS) {
         sendToRoom("gameLost", createGameResultPayload());
         gameStarted = false;
+        resetAllPlayersReady();
         return;
     }
 
@@ -310,21 +389,48 @@ function endTurn(sender) {
     sendCountdownTick(ACTION_TURN_SECONDS, getUsersInRoom());
 }
 
-function consumeAction(sender) {
-    var current = getUserInt(sender, "actionCount", 0);
-    if (current >= MAX_ACTIONS_PER_PLAYER) {
-        return false;
+// Grow every node that already has virus by 1, then randomly infect one clean node.
+function runInfectionPhase() {
+    // Step 1: pick up to 3 already-infected nodes at random and grow them by +1.
+    var infectedNodes = [];
+    for (var i = 0; i < ALL_NODE_IDS.length; i++) {
+        if (getNodeVirus(ALL_NODE_IDS[i]) > 0) {
+            infectedNodes.push(ALL_NODE_IDS[i]);
+        }
     }
-    setUserState(sender, [new SFSUserVariable("actionCount", current + 1)]);
-    return true;
+    // Shuffle then take the configured cap.
+    for (var s = infectedNodes.length - 1; s > 0; s--) {
+        var r = Math.floor(Math.random() * (s + 1));
+        var tmp = infectedNodes[s]; infectedNodes[s] = infectedNodes[r]; infectedNodes[r] = tmp;
+    }
+    var growCount = Math.min(MAX_GROW_NODES_PER_INFECTION_PHASE, infectedNodes.length);
+    for (var g = 0; g < growCount; g++) {
+        if (applyInfection(infectedNodes[g])) {
+            return; // game over triggered
+        }
+    }
+    // Step 2: infect one random clean (zero-virus) node.
+    var cleanNodes = [];
+    for (var j = 0; j < ALL_NODE_IDS.length; j++) {
+        if (getNodeVirus(ALL_NODE_IDS[j]) === 0) {
+            cleanNodes.push(ALL_NODE_IDS[j]);
+        }
+    }
+    if (cleanNodes.length > 0) {
+        var pick = cleanNodes[Math.floor(Math.random() * cleanNodes.length)];
+        applyInfection(pick);
+    }
 }
 
-function infectSingleSourceNode() {
-    var nodeId = pickSpreadNode();
-    var virusCount = getNodeVirus(nodeId) + 1;
-    if (virusCount > 3) {
+// Apply +1 virus to a node, handle outbreak, broadcast, check game-over.
+// Returns true if game over was triggered.
+function applyInfection(nodeId) {
+    var previousVirusCount = getNodeVirus(nodeId);
+    var virusCount = previousVirusCount + 1;
+    var wasOutbreaking = previousVirusCount > 3;
+    var isOutbreaking = virusCount > 3;
+    if (!wasOutbreaking && isOutbreaking) {
         outbreakCount += 1;
-        virusCount = 3;
         var outbreak = new SFSObject();
         outbreak.putInt("nodeId", nodeId);
         outbreak.putInt("outbreakCount", outbreakCount);
@@ -332,44 +438,27 @@ function infectSingleSourceNode() {
     }
     setNodeVirus(nodeId, virusCount);
     activeInfectionNodeId = nodeId;
-    setRoomVars([new SFSRoomVariable("boardState", createBoardStateArray())]);
     var infect = new SFSObject();
     infect.putInt("nodeId", nodeId);
     infect.putInt("virusCount", virusCount);
     sendToRoom("infect", infect);
     if (outbreakCount >= LOSE_OUTBREAK_TARGET) {
+        setRoomVars([new SFSRoomVariable("boardState", createBoardStateArray())]);
         sendToRoom("gameLost", createGameResultPayload());
         gameStarted = false;
+        resetAllPlayersReady();
+        return true;
     }
+    return false;
 }
 
-function pickSpreadNode() {
-    var source = activeInfectionNodeId;
-    if (source <= 0 || getNodeVirus(source) <= 0) {
-        source = findInitialInfectionSource();
+function consumeAction(sender) {
+    var current = getUserInt(sender, "actionCount", 0);
+    if (current >= MAX_ACTIONS_PER_PLAYER) {
+        return false;
     }
-
-    if (source <= 0) {
-        source = ALL_NODE_IDS[0];
-    }
-
-    var neighbors = EDGE_MAP[source] || [];
-    if (neighbors.length === 0) {
-        return source;
-    }
-
-    var target = neighbors[0];
-    var minVirus = getNodeVirus(target);
-    for (var i = 1; i < neighbors.length; i++) {
-        var candidate = neighbors[i];
-        var count = getNodeVirus(candidate);
-        if (count < minVirus) {
-            minVirus = count;
-            target = candidate;
-        }
-    }
-
-    return target;
+    setUserState(sender, [new SFSUserVariable("actionCount", current + 1)]);
+    return true;
 }
 
 function findInitialInfectionSource() {
@@ -388,6 +477,7 @@ function broadcastRoomState() {
         new SFSRoomVariable("round", round),
         new SFSRoomVariable("researchNodeId", researchNodeId),
         new SFSRoomVariable("researchCount", researchCount),
+        new SFSRoomVariable("outbreakCount", outbreakCount),
         new SFSRoomVariable("activePlayerName", activePlayerName),
         new SFSRoomVariable("boardState", createBoardStateArray())
     ]);
@@ -507,6 +597,13 @@ function advanceActivePlayer() {
     var nextIndex = currentIndex >= 0 ? (currentIndex + 1) % users.length : 0;
     activePlayerName = getUserName(users[nextIndex]);
     setUserState(users[nextIndex], [new SFSUserVariable("actionCount", 0)]);
+}
+
+function resetAllPlayersReady() {
+    var users = getUsersInRoom();
+    for (var i = 0; i < users.length; i++) {
+        setUserState(users[i], [new SFSUserVariable("isReady", false)]);
+    }
 }
 
 function areAllPlayersReady() {

@@ -1,4 +1,4 @@
-import { SFSUser, SFSUserVariable, SetUserVariablesRequest } from "sfs2x-api";
+import { SFSUser, SFSUserVariable, SetUserVariablesRequest, SFSRoom } from "sfs2x-api";
 import { subtitleStyle, titleStyle } from "../../styles";
 import { TextButton } from "../../ui/TextButton";
 import { socket } from "../network/socket";
@@ -8,12 +8,14 @@ import { BaseScene } from "./BaseScene";
 interface LobbySceneData {
   roomCode: string;
   players: SFSUser[];
+  room: SFSRoom;
 }
 
 export class LobbyScene extends BaseScene {
   lobbyEvents!: LobbyEvents;
 
   roomCode!: string;
+  room!: SFSRoom;
   players: SFSUser[] = [];
 
   private playerListSizer!: any;
@@ -35,6 +37,7 @@ export class LobbyScene extends BaseScene {
   create(data: LobbySceneData) {
     console.log("Entering LobbyScene with data:", data);
     this.roomCode = data.roomCode;
+    this.room = data.room;
     this.players = data.players;
 
     this.createTitle();
@@ -46,7 +49,7 @@ export class LobbyScene extends BaseScene {
     this.createButtons();
     this.createCountdown();
 
-    this.lobbyEvents = new LobbyEvents(this);
+    this.lobbyEvents = new LobbyEvents(this, this.room);
   }
 
   private createTitle() {

@@ -35,6 +35,13 @@ export const getMyName = (): string => {
   return socket.mySelf.name;
 };
 
+export const leaveCurrentRoom = () => {
+  if (socket.lastJoinedRoom) {
+    console.log("🚪 Leaving room:", socket.lastJoinedRoom.name);
+    socket.send(new SFS2X.LeaveRoomRequest(socket.lastJoinedRoom));
+  }
+};
+
 const onConnection = (event: ON_CONNECTION_EVENT_RESPONSE) => {
   if (event.success) {
     console.log("✅ Connected to server");
