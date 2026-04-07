@@ -10,6 +10,10 @@ export class MainMenu extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
+    this.sound.stopByKey("ingame");
+    this.sound.stopByKey("lobby");
+    this.sound.play("lobby", { loop: true, volume: 0.3 });
+
     // === Title ===
     const title = this.add.text(
       width / 2,

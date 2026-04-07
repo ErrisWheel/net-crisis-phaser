@@ -27,12 +27,8 @@ export class Game extends BaseScene {
 
   create() {
     this.sound.stopByKey("lobby");
-    const gameMusic = this.sound.get("ingame");
-    if (!gameMusic) {
-      this.sound.add("ingame", { loop: true, volume: 0.25 }).play();
-    } else if (!gameMusic.isPlaying) {
-      gameMusic.play();
-    }
+    this.sound.stopByKey("ingame");
+    this.sound.play("ingame", { loop: true, volume: 0.25 });
 
     this.board = new Board(this, mainX, mainY, {
       nodeConfig: NodeConfig,

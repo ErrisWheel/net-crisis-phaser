@@ -39,7 +39,6 @@ export class GameOver extends Scene {
         this.sound.stopByKey('lobby');
         this.sound.stopByKey(resultSound);
         this.sound.play(resultSound, { volume: 0.5 });
-        this.sound.play('lobby', { volume: 0.3 });
         
         this.cameras.main.setBackgroundColor(isWin ? 0x0d2b0d : 0x2b0d0d);
 

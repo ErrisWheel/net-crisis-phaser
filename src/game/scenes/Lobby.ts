@@ -37,14 +37,6 @@ export class LobbyScene extends BaseScene {
     this.roomCode = data.roomCode;
     this.players = data.players;
 
-    this.sound.stopByKey("ingame");
-    const lobbyMusic = this.sound.get("lobby");
-    if (!lobbyMusic) {
-      this.sound.add("lobby", { loop: true, volume: 0.3 }).play();
-    } else if (!lobbyMusic.isPlaying) {
-      lobbyMusic.play();
-    }
-
     this.createTitle();
     this.createRoomCode();
     this.createCharacterSelection();
