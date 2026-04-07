@@ -7,7 +7,7 @@ import {
   ON_ROOM_VARIABLES_UPDATE_EVENT_RESPONSE,
   ON_USER_VARIABLES_UPDATE_EVENT_RESPONSE,
 } from "../../types/sfs2x-event";
-import { GameOverDialog } from "../containers/gameoverModal";
+import { PlayerScore } from "../scenes/GameOver";
 
 export class GameEvents {
   maxPlayerAction = 2;
@@ -334,18 +334,30 @@ export class GameEvents {
     this.scene.hud.setPhaseMessage(`Outbreak at #${nodeId}!`);
   }
 
+  private collectScores(): PlayerScore[] {
+    const room = socket.lastJoinedRoom;
+    if (!room) return [];
+    const scores: PlayerScore[] = [];
+    const users = room.getUserList();
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      const pointsVar = user.getVariable("points");
+      const points = pointsVar ? (pointsVar.value as number) : 0;
+      scores.push({ name: user.name, points });
+    }
+    return scores;
+  }
+
   doGameLost() {
-    // TODO:
-    this.scene.gameOverDialog = new GameOverDialog(this.scene, "lose", () => {
-      this.reset();
-    });
+    const scores = this.collectScores();
+    this.reset();
+    this.scene.gotoScene("GameOver", { result: "lose", scores });
   }
 
   doGameWon() {
-    // TODO:
-    this.scene.gameOverDialog = new GameOverDialog(this.scene, "win", () => {
-      this.scene.gotoScene("MainMenu");
-    });
+    const scores = this.collectScores();
+    this.reset();
+    this.scene.gotoScene("GameOver", { result: "win", scores });
   }
 
   emitPlayerAction(type: string, targetNodeId?: number) {
