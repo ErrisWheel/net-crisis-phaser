@@ -227,8 +227,7 @@ export class GameEvents {
     if (!room) {
       return;
     }
-
-    // Only update buttons if we're actually in the action phase
+    
     const phaseVar = room.getVariable("phase");
     const phase = phaseVar ? (phaseVar.value as string) : undefined;
     if (phase !== "action") {

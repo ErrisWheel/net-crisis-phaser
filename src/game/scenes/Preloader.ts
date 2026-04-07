@@ -23,11 +23,8 @@ export class Preloader extends Scene {
   }
 
   preload() {
-    //  Load the assets for the game - Replace with your own assets
     this.load.setPath("assets");
-
     this.load.image("logo", "logo.png");
-
     this.load.image("node", "node.png");
     this.load.image("virus", "virus.png");
     this.load.image("player", "player.png");
@@ -52,6 +49,8 @@ export class Preloader extends Scene {
     this.load.audio("begin", "sounds/begin.ogg");
     this.load.audio("infection", "sounds/infection.ogg");
     this.load.audio("victory", "sounds/victory.mp3");
+    this.load.audio("lobby", "sounds/lobby.mp3");
+    this.load.audio("ingame", "sounds/ingame.mp3");
   }
 
   create() {
