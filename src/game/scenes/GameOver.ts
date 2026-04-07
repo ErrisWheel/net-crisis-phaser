@@ -8,16 +8,16 @@ export interface PlayerScore {
 // Selection sort
 function selectionSort(arr: PlayerScore[]): PlayerScore[] {
     for (let i = 0; i < arr.length - 1; i++) {
-        let maxIdx = i;
+        let index = i;
         for (let j = i + 1; j < arr.length; j++) {
-            if (arr[j].points > arr[maxIdx].points) {
-                maxIdx = j;
+            if (arr[j].points > arr[index].points) {
+                index = j;
             }
         }
-        if (maxIdx !== i) {
+        if (index !== i) {
             const temp = arr[i];
-            arr[i] = arr[maxIdx];
-            arr[maxIdx] = temp;
+            arr[i] = arr[index];
+            arr[index] = temp;
         }
     }
     return arr;

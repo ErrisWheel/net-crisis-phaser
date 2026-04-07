@@ -420,7 +420,6 @@ export class Game extends BaseScene {
 
     if (player && targetNode) {
       // move player
-      this.hud.addLog(`${player.name} moves to ${targetNodeId}`);
       const start = player.getWorldPoint();
       const end = targetNode.getWorldPoint();
       this.children.add(player);

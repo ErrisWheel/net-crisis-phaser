@@ -18,6 +18,7 @@ var researchCount = 0;
 var outbreakCount = 0;
 var nodeVirus = {};
 var activeInfectionNodeId = -1;
+var activePlayerName = "";
 var EventType = null;
 
 try {
@@ -137,8 +138,12 @@ function onUserExitRoom(event) {
         researchCount = 0;
         outbreakCount = 0;
         researchNodeId = DEFAULT_RESEARCH_NODE_ID;
+        activePlayerName = "";
         resetBoardState();
         broadcastRoomState();
+    } else if (gameStarted) {
+        ensureActivePlayer();
+        setRoomVars([new SFSRoomVariable("activePlayerName", activePlayerName)]);
     }
 }
 
@@ -174,6 +179,7 @@ function beginGame() {
     for (var i = 0; i < users.length; i++) {
         setPlayerDefaults(users[i]);
     }
+    activePlayerName = users.length > 0 ? getUserName(users[0]) : "";
     broadcastRoomState();
     pushBoardStateTo(users);
     sendCountdownTick(ACTION_TURN_SECONDS, users);
@@ -184,6 +190,9 @@ function onPlayerAction(params, sender) {
         room = resolveRoom(sender, null) || ensureRoom(sender) || room;
         var actionType = params.getUtfString("type");
         if (!room || !gameStarted || currentPhase !== "action") {
+            return;
+        }
+        if (!isSenderTurn(sender)) {
             return;
         }
         if (!consumeAction(sender)) {
@@ -240,6 +249,9 @@ function resolveTreat(sender, targetNodeId, cmd, manaCost, clearAll) {
     if (cmd === "cleanseResolve") {
         next = Math.max(0, current - 2);
     }
+    if (current > 0) {
+        awardPoints(sender, 50);
+    }
     setNodeVirus(targetNodeId, next);
     setRoomVars([new SFSRoomVariable("boardState", createBoardStateArray())]);
     if (manaCost > 0) {
@@ -257,6 +269,7 @@ function resolveResearch(sender, targetNodeId) {
         return;
     }
     researchCount += 1;
+    awardPoints(sender, 100);
     researchNodeId = pickRandomNode(researchNodeId);
     setRoomVars([
         new SFSRoomVariable("researchCount", researchCount),
@@ -264,7 +277,7 @@ function resolveResearch(sender, targetNodeId) {
     ]);
     setUserState(sender, [new SFSUserVariable("promoteCount", getUserInt(sender, "promoteCount", 0) + 1)]);
     if (researchCount >= WIN_RESEARCH_TARGET) {
-        sendToRoom("gameWon", new SFSObject());
+        sendToRoom("gameWon", createGameResultPayload());
         gameStarted = false;
     }
 }
@@ -281,17 +294,18 @@ function endTurn(sender) {
     infectSingleSourceNode();
 
     if (round >= MAX_ROUNDS) {
-        sendToRoom("gameLost", new SFSObject());
+        sendToRoom("gameLost", createGameResultPayload());
         gameStarted = false;
         return;
     }
 
     currentPhase = "action";
     round += 1;
-    setUserState(sender, [new SFSUserVariable("actionCount", 0)]);
+    advanceActivePlayer();
     setRoomVars([
         new SFSRoomVariable("phase", currentPhase),
-        new SFSRoomVariable("round", round)
+        new SFSRoomVariable("round", round),
+        new SFSRoomVariable("activePlayerName", activePlayerName)
     ]);
     sendCountdownTick(ACTION_TURN_SECONDS, getUsersInRoom());
 }
@@ -324,7 +338,7 @@ function infectSingleSourceNode() {
     infect.putInt("virusCount", virusCount);
     sendToRoom("infect", infect);
     if (outbreakCount >= LOSE_OUTBREAK_TARGET) {
-        sendToRoom("gameLost", new SFSObject());
+        sendToRoom("gameLost", createGameResultPayload());
         gameStarted = false;
     }
 }
@@ -374,6 +388,7 @@ function broadcastRoomState() {
         new SFSRoomVariable("round", round),
         new SFSRoomVariable("researchNodeId", researchNodeId),
         new SFSRoomVariable("researchCount", researchCount),
+        new SFSRoomVariable("activePlayerName", activePlayerName),
         new SFSRoomVariable("boardState", createBoardStateArray())
     ]);
 }
@@ -420,7 +435,8 @@ function setPlayerDefaults(user) {
         new SFSUserVariable("nodePid", 1),
         new SFSUserVariable("actionCount", 0),
         new SFSUserVariable("mana", 0),
-        new SFSUserVariable("promoteCount", 0)
+        new SFSUserVariable("promoteCount", 0),
+        new SFSUserVariable("points", 0)
     ]);
 }
 
@@ -437,6 +453,60 @@ function getUsersInRoom() {
         return [];
     }
     return toArray(room.getUserList());
+}
+
+function getUserName(user) {
+    try {
+        return user.getName();
+    } catch (e) {
+        return user && user.name ? user.name : "";
+    }
+}
+
+function ensureActivePlayer() {
+    var users = getUsersInRoom();
+    if (users.length === 0) {
+        activePlayerName = "";
+        return;
+    }
+
+    if (!activePlayerName) {
+        activePlayerName = getUserName(users[0]);
+        return;
+    }
+
+    for (var i = 0; i < users.length; i++) {
+        if (getUserName(users[i]) === activePlayerName) {
+            return;
+        }
+    }
+
+    activePlayerName = getUserName(users[0]);
+}
+
+function isSenderTurn(sender) {
+    ensureActivePlayer();
+    return getUserName(sender) === activePlayerName;
+}
+
+function advanceActivePlayer() {
+    var users = getUsersInRoom();
+    if (users.length === 0) {
+        activePlayerName = "";
+        return;
+    }
+
+    var currentIndex = -1;
+    for (var i = 0; i < users.length; i++) {
+        if (getUserName(users[i]) === activePlayerName) {
+            currentIndex = i;
+            break;
+        }
+    }
+
+    var nextIndex = currentIndex >= 0 ? (currentIndex + 1) % users.length : 0;
+    activePlayerName = getUserName(users[nextIndex]);
+    setUserState(users[nextIndex], [new SFSUserVariable("actionCount", 0)]);
 }
 
 function areAllPlayersReady() {
@@ -483,6 +553,30 @@ function getNodeVirus(nodeId) {
 
 function setNodeVirus(nodeId, count) {
     nodeVirus[nodeId] = Math.max(0, count);
+}
+
+function awardPoints(user, amount) {
+    var current = getUserInt(user, "points", 0);
+    setUserState(user, [new SFSUserVariable("points", current + amount)]);
+}
+
+function createGameResultPayload() {
+    var payload = new SFSObject();
+    payload.putSFSArray("scores", createScoreArray());
+    return payload;
+}
+
+function createScoreArray() {
+    var users = getUsersInRoom();
+    var scores = new SFSArray();
+    for (var i = 0; i < users.length; i++) {
+        var user = users[i];
+        var item = new SFSObject();
+        item.putUtfString("name", getUserName(user));
+        item.putInt("points", getUserInt(user, "points", 0));
+        scores.addSFSObject(item);
+    }
+    return scores;
 }
 
 function getVariableValue(entity, varName, fallback) {

@@ -100,6 +100,13 @@ export class GameEvents {
       this.scene.hud.resolveResearchAction(researchCount);
       this.doActionPhase();
     }
+
+    if (changedVars.indexOf("activePlayerName") >= 0) {
+      const activePlayerName = room.getVariable("activePlayerName")
+        .value as string;
+      this.scene.hud.addLog(`Turn: ${activePlayerName}`);
+      this.doActionPhase();
+    }
   }
 
   onExtensionResponse(event: ON_EXTENSION_RESPONSE_EVENT_RESPONSE) {
@@ -133,11 +140,11 @@ export class GameEvents {
         break;
       case "gameLost":
         console.log("💀 Game lost");
-        this.doGameLost();
+        this.doGameLost(params);
         break;
       case "gameWon":
         console.log("🏆 Game won");
-        this.doGameWon();
+        this.doGameWon(params);
         break;
       default:
         console.log("❓ Unknown extension response:", cmd);
@@ -211,7 +218,6 @@ export class GameEvents {
   }
 
   doActionPhase() {
-    this.scene.sound.play("new_phase");
     const mySelf = socket.mySelf;
     if (!mySelf) {
       return;
@@ -228,6 +234,17 @@ export class GameEvents {
     if (phase !== "action") {
       return;
     }
+
+    const activePlayerVar = room.getVariable("activePlayerName");
+    const activePlayerName = activePlayerVar
+      ? (activePlayerVar.value as string)
+      : "";
+    if (activePlayerName && activePlayerName !== mySelf.name) {
+      this.scene.hud.disableAllButtons();
+      return;
+    }
+
+    this.scene.sound.play("new_phase");
 
     if (!this.scene.hud.countdownEvent) {
       this.scene.hud.updateTimer(this.actionTurnSeconds, "action");
@@ -253,6 +270,8 @@ export class GameEvents {
           ? myNode.nodeImage.texture.key === "flask"
           : false,
       });
+    } else {
+      this.scene.hud.disableAllButtons();
     }
   }
 
@@ -348,16 +367,43 @@ export class GameEvents {
     return scores;
   }
 
-  doGameLost() {
-    const scores = this.collectScores();
-    this.reset();
-    this.scene.gotoScene("GameOver", { result: "lose", scores });
+  private parseScoresFromParams(params?: SFS2X.SFSObject): PlayerScore[] {
+    if (!params) return [];
+    try {
+      const scoreArray = params.getSFSArray("scores");
+      if (!scoreArray) return [];
+
+      const scores: PlayerScore[] = [];
+      for (let i = 0; i < scoreArray.size(); i++) {
+        const item = scoreArray.getSFSObject(i);
+        if (!item) continue;
+        scores.push({
+          name: item.getUtfString("name"),
+          points: item.getInt("points"),
+        });
+      }
+      return scores;
+    } catch {
+      return [];
+    }
   }
 
-  doGameWon() {
-    const scores = this.collectScores();
+  doGameLost(params?: SFS2X.SFSObject) {
+    const scores = this.parseScoresFromParams(params);
     this.reset();
-    this.scene.gotoScene("GameOver", { result: "win", scores });
+    this.scene.gotoScene("GameOver", {
+      result: "lose",
+      scores: scores.length > 0 ? scores : this.collectScores(),
+    });
+  }
+
+  doGameWon(params?: SFS2X.SFSObject) {
+    const scores = this.parseScoresFromParams(params);
+    this.reset();
+    this.scene.gotoScene("GameOver", {
+      result: "win",
+      scores: scores.length > 0 ? scores : this.collectScores(),
+    });
   }
 
   emitPlayerAction(type: string, targetNodeId?: number) {
